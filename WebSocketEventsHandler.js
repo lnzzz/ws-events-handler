@@ -147,7 +147,7 @@ class WebSocketEventsHandler {
       }
 
       if (config.ack) {
-          this.sendAck(handler.eventName, config.ack, payload);
+          this.#sendAck(handler.eventName, config.ack, payload);
       }
 
       if (typeof config === 'function') {
@@ -184,7 +184,7 @@ class WebSocketEventsHandler {
       }
   }
 
-  sendAck(eventName, ackConfig, originalEventPayload=null) {
+  #sendAck(eventName, ackConfig, originalEventPayload=null) {
       const ackMessage = { 
         when: Date.now(), 
         id: this.#id,
