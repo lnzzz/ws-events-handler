@@ -8,6 +8,7 @@ class WebSocketEventsHandler {
 
   #heartbeatInterval = 15000;
   #heartbeatTimeout = 10000;
+  #heartbeatMessage = "ping";
   #heartbeatExpectedResponse = "pong";
 
   #pingInterval;
@@ -19,14 +20,39 @@ class WebSocketEventsHandler {
       this.#wsUrl = wsUrl;
       if (config.heartbeat?.timeout) this.#heartbeatTimeout = config.heartbeat.timeout;
       if (config.heartbeat?.expectedResponse) this.#heartbeatExpectedResponse = config.heartbeat.expectedResponse;
+      if (config.heartbeat?.message) this.#heartbeatMessage = config.heartbeat.message;
       if (config.heartbeat?.interval) this.#heartbeatInterval = config.heartbeat.interval;
       if (config.connection?.retryCount) this.#connectionRetryCount = config.connection.retryCount;
       if (config.connection?.maxRetries) this.#connectionMaxRetries = config.connection.maxRetries;
       if (config.connection?.retryDelay) this.#connectionRetryDelay = config.connection.retryDelay;
+      this.#setupNetworkListeners();
       this.#connect();
   }
 
+  #setupNetworkListeners() {
+    if (window) {
+      const _this = this;
+      window.addEventListener('online', this.#handleOnline.bind(_this));
+      window.addEventListener('offline', this.#handleOffline.bind(_this));
+    }
+  }
+
+  #handleOnline() {
+    console.log('Network is online. Attempting to reconnect...');
+    this.#connect();
+  }
+
+  #handleOffline() {
+    console.log('Network is offline. Closing WebSocket connection.');
+    console.log(this.#ws);
+    this.#ws.close();
+  }
+
   #connect() {
+    if (navigator && !navigator.onLine) {
+      console.warn('Network is offline. Cannot connect to WebSocket server.');
+      return;
+    }
     this.#ws = new WebSocket(this.#wsUrl);
     this.#ws.addEventListener('open', this.#onOpen);
     this.#ws.addEventListener('message', this.#onMessage);
@@ -61,8 +87,7 @@ class WebSocketEventsHandler {
   #startHeartbeat() {
     this.#pingInterval = setInterval(() => {
       if (this.#ws.readyState === WebSocket.OPEN) {
-        console.log('Sending ping');
-        this.#ws.send(JSON.stringify('ping'));
+        this.#ws.send(JSON.stringify(this.#heartbeatMessage));
         this.#heartbeatExpectedResponseTimeout = setTimeout(() => {
           console.warn('No heartbeat expected response, reconnecting...');
           this.#ws.close();
@@ -177,6 +202,10 @@ class WebSocketEventsHandler {
   }
 
   destroy(reason) {
+      if (window) {
+        window.removeEventListener('online', this.#handleOnline);
+        window.removeEventListener('offline', this.#handleOffline);
+      }
       this.#ws.removeEventListener('message', this.#onMessage);
       this.#ws.removeEventListener('open', this.#onOpen);
       this.#ws.removeEventListener('close', this.#onClose);
