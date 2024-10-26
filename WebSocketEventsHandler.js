@@ -11,6 +11,10 @@ class WebSocketEventsHandler {
   #heartbeatMessage = "ping";
   #heartbeatExpectedResponse = "pong";
 
+  #useLocalEvents = false;
+  #localEventsDelay = 1000;
+  #localEvents = [];
+
   #pingInterval;
   #heartbeatExpectedResponseTimeout;
   #wsUrl;
@@ -25,6 +29,8 @@ class WebSocketEventsHandler {
       if (config.connection?.retryCount) this.#connectionRetryCount = config.connection.retryCount;
       if (config.connection?.maxRetries) this.#connectionMaxRetries = config.connection.maxRetries;
       if (config.connection?.retryDelay) this.#connectionRetryDelay = config.connection.retryDelay;
+      if (config.connection?.fallback?.localEvents) this.#useLocalEvents = true;
+      if (config.connection?.fallback?.localEventsDelay) this.#localEventsDelay = config.connection.fallback.localEventsDelay;
       this.#setupNetworkListeners();
       this.#connect();
   }
@@ -44,7 +50,6 @@ class WebSocketEventsHandler {
 
   #handleOffline() {
     console.log('Network is offline. Closing WebSocket connection.');
-    console.log(this.#ws);
     this.#ws.close();
   }
 
@@ -58,12 +63,23 @@ class WebSocketEventsHandler {
     this.#ws.addEventListener('message', this.#onMessage);
     this.#ws.addEventListener('close', this.#onClose);
     this.#ws.addEventListener('error', this.#onError);
-    this.register('mounted', this.#handleMounted.bind(this));
+    this.on('mounted', this.#handleMounted.bind(this));
   }
 
   #onOpen = () => {
     console.log('Connected to server');
     this.#startHeartbeat();
+    if (this.#useLocalEvents && this.#localEvents.length > 0) {
+      for (let i = this.#localEvents.length -1 ; i>=0; i--) {
+        const event = this.#localEvents[i];
+        if (this.#localEventsDelay) {
+          setTimeout(() => this.send(event[0], event[1]), this.#localEventsDelay);
+        } else {
+          this.send(event[0], event[1]);
+        }
+        this.#localEvents.splice(this.#localEvents.indexOf(event), 1);
+      };
+    }
   }
 
   #onMessage = (event) => {
@@ -135,6 +151,8 @@ class WebSocketEventsHandler {
           return;
       }
 
+      if (handler && handler.off) return;
+
       this.#processHandler(handler, payload);
   }
 
@@ -155,6 +173,10 @@ class WebSocketEventsHandler {
       } else if (config.callback) {
           config.callback(payload);
       }
+      handler.tracking = {
+        lastTrigger: Date.now()
+      }
+      this.#updateHandler(handler, handler.config);
   }
 
   #processCycle(handler, payload) {
@@ -169,7 +191,8 @@ class WebSocketEventsHandler {
       cycle.internalCyclePayloads.push(payload);
 
       if (cycle.internalMessageCount === cycle.every) {
-          cycle.callback(cycle.internalCyclePayloads);
+          const callback = cycle.callback || handler.config.callback;
+          callback(cycle.internalCyclePayloads);
           cycle.internalMessageCount = 0;
           cycle.internalCyclePayloads = [];
       }
@@ -193,12 +216,49 @@ class WebSocketEventsHandler {
       this.#ws.send(JSON.stringify([(ackConfig.event) ? ackConfig.event : `${eventName}-ack`, ackMessage]));
   }
 
-  register(eventName, config) {
-      this.#handlers.push({ eventName, config, registeredOn: Date.now() });
+  send(eventName, payload) {
+    const message = [eventName, {
+      when: Date.now(),
+      id: this.#id,
+      payload
+    }];
+
+    if (navigator && !navigator.onLine && this.#useLocalEvents) {
+      console.warn('Network is offline. Storing event locally.');
+      this.#localEvents.push(message);
+      return;
+    }
+    this.#ws.send(JSON.stringify(message))
   }
 
-  unregister(eventName) {
-      this.#handlers = this.#handlers.filter(h => h.eventName !== eventName);
+  on(eventName, config) {
+    const handler = {
+      eventName,
+      config,
+      registeredOn: Date.now(),
+      off: false
+    }
+    const hIndex = this.#handlers.findIndex((h) => h.eventName === eventName);
+
+    if (hIndex === -1) {
+      this.#handlers.push(handler);
+      return;
+    }
+
+    if (hIndex !== -1) {
+      this.#handlers.splice(hIndex, 1, {
+        ...this.#handlers[hIndex],
+        ...handler
+      });
+    }
+  }
+
+  off(eventName) {
+      this.#handlers.forEach((handler, index) => {
+          if (handler.eventName === eventName) {
+              this.#handlers[index].off = true;
+          }
+      });
   }
 
   destroy(reason) {
