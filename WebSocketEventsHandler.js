@@ -6,6 +6,7 @@ class WebSocketEventsHandler {
   #connectionMaxRetries = 5;
   #connectionRetryDelay = 1000;
 
+  #useHeartbeat = true;
   #heartbeatInterval = 15000;
   #heartbeatTimeout = 10000;
   #heartbeatMessage = "ping";
@@ -14,6 +15,7 @@ class WebSocketEventsHandler {
   #useLocalEvents = false;
   #localEventsDelay = 1000;
   #localEvents = [];
+  #localEventsDispatchInterval;
 
   #pingInterval;
   #heartbeatExpectedResponseTimeout;
@@ -22,6 +24,7 @@ class WebSocketEventsHandler {
 
   constructor(wsUrl, config = {}) {  
       this.#wsUrl = wsUrl;
+      if (!config.hasOwnProperty("heartbeat") || !config.heartbeat) this.#useHeartbeat = false;
       if (config.heartbeat?.timeout) this.#heartbeatTimeout = config.heartbeat.timeout;
       if (config.heartbeat?.expectedResponse) this.#heartbeatExpectedResponse = config.heartbeat.expectedResponse;
       if (config.heartbeat?.message) this.#heartbeatMessage = config.heartbeat.message;
@@ -68,15 +71,29 @@ class WebSocketEventsHandler {
 
   #onOpen = () => {
     console.log('Connected to server');
-    this.#startHeartbeat();
+    if (this.#useHeartbeat) this.#startHeartbeat();
     if (this.#useLocalEvents && this.#localEvents.length > 0) {
+      if (this.#localEventsDelay) {
+        let i = this.#localEvents.length - 1;
+        this.#localEventsDispatchInterval = setInterval(() => {
+            if (i >= 0) {
+              console.log(`Dispatching local events (${this.#localEvents.length})...`);
+              const event = this.#localEvents[i];
+              this.send(event[0], event[1]);
+              this.#localEvents.splice(i, 1);
+              i--;
+            } else {
+              clearInterval(this.#localEventsDispatchInterval);
+            }
+        }, this.#localEventsDelay);
+
+        return;
+      }
+
+
       for (let i = this.#localEvents.length -1 ; i>=0; i--) {
         const event = this.#localEvents[i];
-        if (this.#localEventsDelay) {
-          setTimeout(() => this.send(event[0], event[1]), this.#localEventsDelay);
-        } else {
-          this.send(event[0], event[1]);
-        }
+        this.send(event[0], event[1]);
         this.#localEvents.splice(this.#localEvents.indexOf(event), 1);
       };
     }
@@ -228,7 +245,7 @@ class WebSocketEventsHandler {
       this.#localEvents.push(message);
       return;
     }
-    this.#ws.send(JSON.stringify(message))
+    this.#ws.send(JSON.stringify(message));
   }
 
   on(eventName, config) {
