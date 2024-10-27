@@ -21,6 +21,9 @@ class WebSocketEventsHandler {
   #heartbeatExpectedResponseTimeout;
   #wsUrl;
   #mountTime = null;
+  #debugMode = false;
+
+  onerror = false;
 
   constructor(wsUrl, config = {}) {  
       this.#wsUrl = wsUrl;
@@ -34,6 +37,7 @@ class WebSocketEventsHandler {
       if (config.connection?.retryDelay) this.#connectionRetryDelay = config.connection.retryDelay;
       if (config.connection?.fallback?.localEvents) this.#useLocalEvents = true;
       if (config.connection?.fallback?.localEventsDelay) this.#localEventsDelay = config.connection.fallback.localEventsDelay;
+      if (config.debug) this.#debugMode = true;
       this.#setupNetworkListeners();
       this.#connect();
   }
@@ -47,18 +51,25 @@ class WebSocketEventsHandler {
   }
 
   #handleOnline() {
-    console.log('Network is online. Attempting to reconnect...');
+    this.#log('info', 'Network is online. Attempting to reconnect...');
     this.#connect();
   }
 
   #handleOffline() {
-    console.log('Network is offline. Closing WebSocket connection.');
+    this.#log('info', 'Network is offline. Closing WebSocket connection.');
+    if (this.#localEventsDispatchInterval) clearInterval(this.#localEventsDispatchInterval);
     this.#ws.close();
   }
 
+  #log(level, message, payload=null) {
+    if (this.#debugMode) {
+      (payload) ? console[level](message, payload) : console[level](message);
+    }
+  } 
+
   #connect() {
     if (navigator && !navigator.onLine) {
-      console.warn('Network is offline. Cannot connect to WebSocket server.');
+      this.#log('warn', 'Network is offline. Cannot connect to WebSocket server.');
       return;
     }
     this.#ws = new WebSocket(this.#wsUrl);
@@ -69,20 +80,22 @@ class WebSocketEventsHandler {
     this.on('mounted', this.#handleMounted.bind(this));
   }
 
-  #onOpen = () => {
-    console.log('Connected to server');
+  #onOpen = (data) => {
+    this.#log('info', 'Connected to server');
     if (this.#useHeartbeat) this.#startHeartbeat();
     if (this.#useLocalEvents && this.#localEvents.length > 0) {
       if (this.#localEventsDelay) {
-        let i = this.#localEvents.length - 1;
+        const originalLength = this.#localEvents.length;
+        let j = 1;
         this.#localEventsDispatchInterval = setInterval(() => {
-            if (i >= 0) {
-              console.log(`Dispatching local events (${this.#localEvents.length})...`);
-              const event = this.#localEvents[i];
+            if (this.#localEvents.length > 0) {
+              this.#log('info', `Dispatching local events (${j} / ${originalLength})...`);
+              const event = this.#localEvents[0];
               this.send(event[0], event[1]);
-              this.#localEvents.splice(i, 1);
-              i--;
+              this.#localEvents.splice(0, 1);
+              j++;
             } else {
+              this.#log('info', 'All local events dispatched. Clearing interval.')
               clearInterval(this.#localEventsDispatchInterval);
             }
         }, this.#localEventsDelay);
@@ -107,14 +120,21 @@ class WebSocketEventsHandler {
       this.#onEvent(event);
     }
   }
-  #onError = (error) => console.error('WebSocket Error:', error);
-  #onClose = () => {
-    console.log('Connection closed');
+  
+  #onError = (error) => {
+    if (this.onerror) return this.onerror(error);
+    this.#log('error', 'WebSocket Error:', error)
+  }
+  
+  #onClose = (event) => {
+    this.#log('info', 'Connection closed', event);
     if (this.#connectionRetryCount < this.#connectionMaxRetries) {
       this.#retryConnection();
     } else {
-      console.error('Max retry attempts reached. Connection closed permanently.');
+      this.#log('error', `Max retry attempts reached. Connection closed permanently on ${Date.now()}.`);
+      this.destroy('Max retry attempts reached.');
     }
+    
   }
 
   #startHeartbeat() {
@@ -122,7 +142,7 @@ class WebSocketEventsHandler {
       if (this.#ws.readyState === WebSocket.OPEN) {
         this.#ws.send(JSON.stringify(this.#heartbeatMessage));
         this.#heartbeatExpectedResponseTimeout = setTimeout(() => {
-          console.warn('No heartbeat expected response, reconnecting...');
+          this.#log('warn', 'No heartbeat expected response, reconnecting...');
           this.#ws.close();
         }, this.#heartbeatTimeout);
       }
@@ -138,18 +158,17 @@ class WebSocketEventsHandler {
   #retryConnection() {
     this.#connectionRetryCount++;
     const retryIn = this.#connectionRetryDelay * 2 ** (this.#connectionRetryCount - 1);
-    console.log(`Retrying connection in ${retryIn / 1000} seconds (Attempt ${this.#connectionRetryCount} of ${this.#connectionMaxRetries})`);
+    this.#log('info', `Retrying connection in ${retryIn / 1000} seconds (Attempt ${this.#connectionRetryCount} of ${this.#connectionMaxRetries})`);
     setTimeout(() => {
-      console.log('Attempting to reconnect...');
+      this.#log('info', 'Attempting to reconnect...');
       this.#connect();
     }, retryIn);
   }
 
   #handleMounted(data) {
-      if (!data.wsId) return this.destroy(`No 'wsId' found in mounted event.`);
-      this.#id = data.wsId;
+      this.#id = data.id || null;
       this.#mountTime = Date.now();
-      console.log(`Mounted with id: ${this.#id} on ${this.#mountTime}`);
+      this.#log('info', `Mounted with id: ${this.#id} on ${this.#mountTime}`);
   }
 
   #onEvent(event) {
@@ -157,14 +176,14 @@ class WebSocketEventsHandler {
       try {
           eventData = JSON.parse(event.data);
       } catch (error) {
-          console.warn('Failed to parse event data, using raw data instead.', error);
+          this.#log('info', 'Failed to parse event data, using raw data instead.', error);
       }
 
       const [eventName, payload] = Array.isArray(eventData) ? eventData : [eventData];
       const handler = this.#handlers.find(h => h.eventName === eventName);
 
       if (!handler) {
-          console.warn(`Handler not found for event '${eventName}'`);
+          this.#log('warn', `Handler not found for event '${eventName}'`);
           return;
       }
 
@@ -177,12 +196,18 @@ class WebSocketEventsHandler {
       const { config } = handler;
       if (!config) throw new Error(`No config found for handler of event type: ${handler.eventName}`);
 
-      if (config.cycle) {
-          this.#processCycle(handler, payload);
-      }
-
       if (config.ack) {
           this.#sendAck(handler.eventName, config.ack, payload);
+      }
+
+      handler.tracking = {
+        lastTrigger: Date.now()
+      }
+      this.#updateHandler(handler, handler.config);
+
+      if (config.cycle) {
+        if (config.cycle.exclusive) return this.#processCycle(handler, payload);
+        this.#processCycle(handler, payload);
       }
 
       if (typeof config === 'function') {
@@ -190,10 +215,7 @@ class WebSocketEventsHandler {
       } else if (config.callback) {
           config.callback(payload);
       }
-      handler.tracking = {
-        lastTrigger: Date.now()
-      }
-      this.#updateHandler(handler, handler.config);
+      
   }
 
   #processCycle(handler, payload) {
@@ -227,7 +249,7 @@ class WebSocketEventsHandler {
   #sendAck(eventName, ackConfig, originalEventPayload=null) {
       const ackMessage = { 
         when: Date.now(), 
-        id: this.#id,
+        ...(this.#id) ? { id: this.#id } : null,
         ...(ackConfig && ackConfig.originalEvent) ? originalEventPayload : null
       };
       this.#ws.send(JSON.stringify([(ackConfig.event) ? ackConfig.event : `${eventName}-ack`, ackMessage]));
@@ -236,12 +258,12 @@ class WebSocketEventsHandler {
   send(eventName, payload) {
     const message = [eventName, {
       when: Date.now(),
-      id: this.#id,
+      ...(this.#id) ? { id: this.#id } : null,
       payload
     }];
 
     if (navigator && !navigator.onLine && this.#useLocalEvents) {
-      console.warn('Network is offline. Storing event locally.');
+      this.#log('info', 'Network is offline. Storing event locally.');
       this.#localEvents.push(message);
       return;
     }
@@ -289,6 +311,7 @@ class WebSocketEventsHandler {
       this.#ws.removeEventListener('error', this.#onError);
       this.#stopHeartbeat();
       this.#ws.close();
-      console.error('WebSocket destroyed:', reason);
+      if (this.#localEventsDispatchInterval) clearInterval(this.#localEventsDispatchInterval);
+      this.#log('error', 'WebSocket destroyed.', reason)
   }
 }
