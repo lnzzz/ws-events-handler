@@ -240,9 +240,7 @@ class WebSocketEventsHandler {
 
           if (cycle.rounds && cycle.internalRoundCount === cycle.rounds) {
             callback(cycle.internalCyclePayloads.slice(0, (cycle.every * cycle.internalRoundCount)))
-            if (cycle.destroyAfter) {
-              handler.config.cycle = null;
-            }
+            handler.config.cycle = null;
           } else {
             callback(cycle.internalCyclePayloads);
             cycle.internalMessageCount = 0;

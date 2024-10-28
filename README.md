@@ -93,8 +93,7 @@ This configuration will fire callback once 3 messages for 'eventName' have arriv
 #### Configuration options for cycles
 - `every`: Cycle will be executed every N messages.
 - `exclusive`: Cycle will only execute it's internal callback and not the root callback defined in the handler configuration. If false, root callback will be called every time a message arrives to 'eventName'.
-- `rounds`: Cycle will run N times and then it will unregister from event.
-- `destroyAfter`: Cycle will destroy after all rounds have been completed.
+- `rounds`: Cycle will run N times and then it will self-destruct.
 - `once`: Cycle will run only once. (similar to setting rounds = 1)
 
 
