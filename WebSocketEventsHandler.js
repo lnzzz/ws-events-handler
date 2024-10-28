@@ -43,7 +43,7 @@ class WebSocketEventsHandler {
   }
 
   #setupNetworkListeners() {
-    if (window) {
+    if (typeof window !== 'undefined') {
       const _this = this;
       window.addEventListener('online', this.#handleOnline.bind(_this));
       window.addEventListener('offline', this.#handleOffline.bind(_this));
@@ -68,11 +68,17 @@ class WebSocketEventsHandler {
   } 
 
   #connect() {
-    if (navigator && !navigator.onLine) {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
       this.#log('warn', 'Network is offline. Cannot connect to WebSocket server.');
       return;
     }
-    this.#ws = new WebSocket(this.#wsUrl);
+    if (typeof WebSocket !== 'undefined') {
+      this.#ws = new WebSocket(this.#wsUrl);
+    } else {
+      const WebSocket = require('ws').WebSocket;
+      this.#ws = new WebSocket(this.#wsUrl)
+    }
+    
     this.#ws.addEventListener('open', this.#onOpen);
     this.#ws.addEventListener('message', this.#onMessage);
     this.#ws.addEventListener('close', this.#onClose);
@@ -139,7 +145,7 @@ class WebSocketEventsHandler {
 
   #startHeartbeat() {
     this.#pingInterval = setInterval(() => {
-      if (this.#ws.readyState === WebSocket.OPEN) {
+      if (this.#ws.readyState === 1) {
         this.#ws.send(JSON.stringify(this.#heartbeatMessage));
         this.#heartbeatExpectedResponseTimeout = setTimeout(() => {
           this.#log('warn', 'No heartbeat expected response, reconnecting...');
@@ -327,3 +333,5 @@ class WebSocketEventsHandler {
       this.#log('error', 'WebSocket destroyed.', reason)
   }
 }
+
+module.exports = WebSocketEventsHandler;
