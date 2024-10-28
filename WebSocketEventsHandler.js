@@ -23,6 +23,8 @@ class WebSocketEventsHandler {
   #mountTime = null;
   #debugMode = false;
 
+  #nqm = null;
+
   onerror = false;
 
   constructor(wsUrl, config = {}) {  
@@ -47,6 +49,13 @@ class WebSocketEventsHandler {
       const _this = this;
       window.addEventListener('online', this.#handleOnline.bind(_this));
       window.addEventListener('offline', this.#handleOffline.bind(_this));
+    } else {
+      const nqm = require('./NetworkQualityMonitor.js');
+      if (!this.#nqm) {
+        this.#nqm = new nqm();
+        this.#nqm.on('online', this.#handleOnline.bind(this));
+        this.#nqm.on('offline', this.#handleOffline.bind(this));
+      }
     }
   }
 
@@ -72,6 +81,8 @@ class WebSocketEventsHandler {
       this.#log('warn', 'Network is offline. Cannot connect to WebSocket server.');
       return;
     }
+
+
     if (typeof WebSocket !== 'undefined') {
       this.#ws = new WebSocket(this.#wsUrl);
     } else {
@@ -210,6 +221,8 @@ class WebSocketEventsHandler {
       }
       this.#updateHandler(handler, handler.config);
 
+      console.log(this.#nqm.isOnline);
+
       if (config.cycle) {
         this.#processCycle(handler, payload);
       }
@@ -330,6 +343,7 @@ class WebSocketEventsHandler {
       this.#stopHeartbeat();
       this.#ws.close();
       if (this.#localEventsDispatchInterval) clearInterval(this.#localEventsDispatchInterval);
+      if (this.#nqm) this.#nqm.stopMonitoring();
       this.#log('error', 'WebSocket destroyed.', reason)
   }
 }
