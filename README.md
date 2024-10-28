@@ -77,7 +77,6 @@ Register an event handler for a specific event in cycles.
       every: 3,
       exclusive: true,
       once: true,
-      destroyAfter: true
       callback: (data) => {
         console.log(data);
       }
