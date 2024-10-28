@@ -221,8 +221,6 @@ class WebSocketEventsHandler {
       }
       this.#updateHandler(handler, handler.config);
 
-      console.log(this.#nqm.isOnline);
-
       if (config.cycle) {
         this.#processCycle(handler, payload);
       }
