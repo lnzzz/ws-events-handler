@@ -17,7 +17,7 @@ The `WebSocketEventsHandler` class is a comprehensive JavaScript handler for man
 Install this module via npm:
 
 ```bash
-npm install your-module-name
+npm install ws-events-handler
 ```
 
 ## Usage
