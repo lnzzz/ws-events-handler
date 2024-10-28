@@ -186,7 +186,6 @@ class WebSocketEventsHandler {
           this.#log('warn', `Handler not found for event '${eventName}'`);
           return;
       }
-
       if (handler && handler.off) return;
 
       this.#processHandler(handler, payload);
@@ -206,14 +205,15 @@ class WebSocketEventsHandler {
       this.#updateHandler(handler, handler.config);
 
       if (config.cycle) {
-        if (config.cycle.exclusive) return this.#processCycle(handler, payload);
         this.#processCycle(handler, payload);
       }
 
-      if (typeof config === 'function') {
-          config(payload);
-      } else if (config.callback) {
-          config.callback(payload);
+      if (!config.cycle?.exclusive) {
+        if (typeof config === 'function') {
+            config(payload);
+        } else if (config.callback) {
+            config.callback(payload);
+        }
       }
       
   }
@@ -226,14 +226,28 @@ class WebSocketEventsHandler {
           cycle.internalCyclePayloads = [];
       }
 
+      if (!cycle.internalRoundCount && (cycle.rounds || cycle.once)) {
+        cycle.internalRoundCount = 0;
+      }
+
       cycle.internalMessageCount++;
       cycle.internalCyclePayloads.push(payload);
 
       if (cycle.internalMessageCount === cycle.every) {
-          const callback = cycle.callback || handler.config.callback;
-          callback(cycle.internalCyclePayloads);
-          cycle.internalMessageCount = 0;
-          cycle.internalCyclePayloads = [];
+          cycle.internalRoundCount++;
+          if (cycle.once) cycle.rounds = 1;
+          let callback = (cycle.exclusive) ? cycle.callback : (cycle.callback) ? cycle.callback : handler.config.callback;
+
+          if (cycle.rounds && cycle.internalRoundCount === cycle.rounds) {
+            callback(cycle.internalCyclePayloads.slice(0, (cycle.every * cycle.internalRoundCount)))
+            if (cycle.destroyAfter) {
+              handler.config.cycle = null;
+            }
+          } else {
+            callback(cycle.internalCyclePayloads);
+            cycle.internalMessageCount = 0;
+            cycle.internalCyclePayloads = [];
+          }
       }
 
       this.#updateHandler(handler, handler.config);

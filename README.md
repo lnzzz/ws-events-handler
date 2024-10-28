@@ -67,6 +67,37 @@ wsHandler.on('eventName', (data) => {
 });
 ```
 
+#### Event Handling Cycle 
+
+Register an event handler for a specific event in cycles.
+
+```javascript
+  wsEvents.on('eventName', { 
+    cycle: { 
+      every: 3,
+      exclusive: true,
+      once: true,
+      callback: (data) => {
+        console.log(data);
+      }
+    },
+    callback: (data) => {
+      console.log("this won't fire as cycle is configured to be exclusive.")
+    }
+  })
+```
+
+This configuration will fire callback once 3 messages for 'eventName' have arrived.
+
+#### Configuration options for cycles
+- `every`: Cycle will be executed every N messages.
+- `exclusive`: Cycle will only execute it's internal callback and not the root callback defined in the handler configuration. If false, root callback will be called every time a message arrives to 'eventName'.
+- `rounds`: Cycle will run N times and then it will unregister from event.
+- `destroyAfter`: Cycle will destroy after rounds have been completed.
+- `once`: Cycle will run only once. (similar to setting rounds = 1)
+
+
+
 Unregister an event:
 
 ```javascript
