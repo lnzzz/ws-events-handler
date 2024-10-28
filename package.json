@@ -1,6 +1,6 @@
 {
   "name": "ws-events-handler",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "The WebSocketEventsHandler class is a comprehensive JavaScript handler for managing WebSocket connections, including automatic reconnection, heartbeat management, event handling, and offline event storage. This class provides robust support for WebSocket applications, ensuring seamless communication even in unstable network environments.",
   "main": "WebSocketEventsHandler.js",
   "scripts": {

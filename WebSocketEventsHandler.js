@@ -346,4 +346,6 @@ class WebSocketEventsHandler {
   }
 }
 
-module.exports = WebSocketEventsHandler;
+if (typeof module !== 'undefined') {
+  module.exports = WebSocketEventsHandler;
+}
