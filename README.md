@@ -126,45 +126,28 @@ wsHandler.destroy('Reason for destruction');
 - **`send(eventName, payload)`**: Sends an event with an optional payload.
 - **`destroy(reason)`**: Destroys the WebSocket connection and cleans up resources.
 
-## Known Errors and Potential Bugs
+## Resolved Errors and Fixes
 
-The following issues were detected in the current implementation and should be considered before production usage:
+The following issues were fixed in the current implementation:
 
-1. **`navigator` access in non-browser environments (Node.js)**
-   - **Location**: `WebSocketEventsHandler.send()`
-   - **Issue**: `navigator` is referenced without a `typeof navigator !== 'undefined'` guard.
-   - **Impact**: Can throw `ReferenceError: navigator is not defined` in Node.js.
-   - **Workaround**: Guard navigator access with `typeof navigator !== 'undefined'`.
+1. **Node.js safety for `navigator` usage**
+   - `send()` now checks `typeof navigator !== 'undefined'` before reading `navigator.onLine`.
 
-2. **`window` access in non-browser environments (Node.js)**
-   - **Location**: `WebSocketEventsHandler.destroy()`
-   - **Issue**: `if (window)` is used instead of checking if `window` exists.
-   - **Impact**: Can throw `ReferenceError: window is not defined` in Node.js.
-   - **Workaround**: Use `if (typeof window !== 'undefined')`.
+2. **Node.js safety for `window` usage**
+   - `destroy()` now checks `typeof window !== 'undefined'` before removing browser listeners.
 
-3. **Listener cleanup mismatch (potential memory leak)**
-   - **Location**: `#setupNetworkListeners()` + `destroy()`
-   - **Issue**: Listeners are attached with `.bind(...)` but removed with unbound methods.
-   - **Impact**: Online/offline listeners may remain active after `destroy()`.
-   - **Workaround**: Store bound listener references and remove those exact references.
+3. **Correct listener teardown**
+   - Online/offline listeners are now stored as bound references and removed using the same references.
+   - Node monitor (`NetworkQualityMonitor`) listeners are explicitly detached on `destroy()`.
 
-4. **Unsafe JSON parse path in message handling**
-   - **Location**: `#onMessage()`
-   - **Issue**: `JSON.parse(event.data)` is executed without `try/catch`.
-   - **Impact**: Malformed payloads can break the message loop.
-   - **Workaround**: Wrap parse with `try/catch` and fallback safely.
+4. **Safe message parsing**
+   - `#onMessage()` now uses `try/catch` around `JSON.parse(...)` to avoid runtime crashes on malformed data.
 
-5. **Potential null/undefined WebSocket close call**
-   - **Location**: `#handleOffline()`
-   - **Issue**: `this.#ws.close()` is called without checking `this.#ws`.
-   - **Impact**: Can throw when offline event fires before socket initialization.
-   - **Workaround**: Guard with `if (this.#ws)`.
+5. **Safe WebSocket close on offline**
+   - `#handleOffline()` and `destroy()` now guard WebSocket closing with null/state checks.
 
-6. **Handler lookup scales linearly**
-   - **Location**: `#handlers` + lookups via `.find()` / `.findIndex()`
-   - **Issue**: Event handler operations are O(n).
-   - **Impact**: Throughput can degrade with many registered handlers.
-   - **Workaround**: Replace array-based registry with a `Map` for O(1) average lookups.
+6. **Improved event handler complexity**
+   - Handler storage migrated from array lookups to `Map`, improving average lookup/update complexity from **O(n)** to **O(1)**.
 
 ## License
 
