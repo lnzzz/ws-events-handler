@@ -126,6 +126,29 @@ wsHandler.destroy('Reason for destruction');
 - **`send(eventName, payload)`**: Sends an event with an optional payload.
 - **`destroy(reason)`**: Destroys the WebSocket connection and cleans up resources.
 
+## Resolved Errors and Fixes
+
+The following issues were fixed in the current implementation:
+
+1. **Node.js safety for `navigator` usage**
+   - `send()` now checks `typeof navigator !== 'undefined'` before reading `navigator.onLine`.
+
+2. **Node.js safety for `window` usage**
+   - `destroy()` now checks `typeof window !== 'undefined'` before removing browser listeners.
+
+3. **Correct listener teardown**
+   - Online/offline listeners are now stored as bound references and removed using the same references.
+   - Node monitor (`NetworkQualityMonitor`) listeners are explicitly detached on `destroy()`.
+
+4. **Safe message parsing**
+   - `#onMessage()` now uses `try/catch` around `JSON.parse(...)` to avoid runtime crashes on malformed data.
+
+5. **Safe WebSocket close on offline**
+   - `#handleOffline()` and `destroy()` now guard WebSocket closing with null/state checks.
+
+6. **Improved event handler complexity**
+   - Handler storage migrated from array lookups to `Map`, improving average lookup/update complexity from **O(n)** to **O(1)**.
+
 ## License
 
 This project is licensed under the MIT License.

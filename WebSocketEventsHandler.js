@@ -1,5 +1,5 @@
 class WebSocketEventsHandler {
-  #handlers = [];
+  #handlers = new Map();
   #id = null;
   #ws;
   #connectionRetryCount = 0;
@@ -24,6 +24,8 @@ class WebSocketEventsHandler {
   #debugMode = false;
 
   #nqm = null;
+  #boundHandleOnline;
+  #boundHandleOffline;
 
   onerror = false;
 
@@ -40,21 +42,22 @@ class WebSocketEventsHandler {
       if (config.connection?.fallback?.localEvents) this.#useLocalEvents = true;
       if (config.connection?.fallback?.localEventsDelay) this.#localEventsDelay = config.connection.fallback.localEventsDelay;
       if (config.debug) this.#debugMode = true;
+      this.#boundHandleOnline = this.#handleOnline.bind(this);
+      this.#boundHandleOffline = this.#handleOffline.bind(this);
       this.#setupNetworkListeners();
       this.#connect();
   }
 
   #setupNetworkListeners() {
     if (typeof window !== 'undefined') {
-      const _this = this;
-      window.addEventListener('online', this.#handleOnline.bind(_this));
-      window.addEventListener('offline', this.#handleOffline.bind(_this));
+      window.addEventListener('online', this.#boundHandleOnline);
+      window.addEventListener('offline', this.#boundHandleOffline);
     } else {
       const nqm = require('./NetworkQualityMonitor.js');
       if (!this.#nqm) {
         this.#nqm = new nqm();
-        this.#nqm.on('online', this.#handleOnline.bind(this));
-        this.#nqm.on('offline', this.#handleOffline.bind(this));
+        this.#nqm.on('online', this.#boundHandleOnline);
+        this.#nqm.on('offline', this.#boundHandleOffline);
       }
     }
   }
@@ -67,7 +70,7 @@ class WebSocketEventsHandler {
   #handleOffline() {
     this.#log('info', 'Network is offline. Closing WebSocket connection.');
     if (this.#localEventsDispatchInterval) clearInterval(this.#localEventsDispatchInterval);
-    this.#ws.close();
+    if (this.#ws && this.#ws.readyState < 2) this.#ws.close();
   }
 
   #log(level, message, payload=null) {
@@ -130,12 +133,18 @@ class WebSocketEventsHandler {
   }
 
   #onMessage = (event) => {
-    const data = JSON.parse(event.data);
+    let data;
+    try {
+      data = JSON.parse(event.data);
+    } catch (error) {
+      this.#log('warn', 'Failed to parse message data.', error);
+      return;
+    }
     if (data === this.#heartbeatExpectedResponse) {
       clearTimeout(this.#heartbeatExpectedResponseTimeout);
-    } else {
-      this.#onEvent(event);
+      return;
     }
+    this.#onEvent(data);
   }
   
   #onError = (error) => {
@@ -188,16 +197,9 @@ class WebSocketEventsHandler {
       this.#log('info', `Mounted with id: ${this.#id} on ${this.#mountTime}`);
   }
 
-  #onEvent(event) {
-      let eventData;
-      try {
-          eventData = JSON.parse(event.data);
-      } catch (error) {
-          this.#log('info', 'Failed to parse event data, using raw data instead.', error);
-      }
-
+  #onEvent(eventData) {
       const [eventName, payload] = Array.isArray(eventData) ? eventData : [eventData];
-      const handler = this.#handlers.find(h => h.eventName === eventName);
+      const handler = this.#handlers.get(eventName);
 
       if (!handler) {
           this.#log('warn', `Handler not found for event '${eventName}'`);
@@ -269,9 +271,8 @@ class WebSocketEventsHandler {
   }
 
   #updateHandler(handler, config) {
-      const index = this.#handlers.findIndex(h => h.eventName === handler.eventName);
-      if (index !== -1) {
-          this.#handlers[index] = { ...handler, config };
+      if (this.#handlers.has(handler.eventName)) {
+          this.#handlers.set(handler.eventName, { ...handler, config });
       }
   }
 
@@ -291,7 +292,7 @@ class WebSocketEventsHandler {
       payload
     }];
 
-    if (navigator && !navigator.onLine && this.#useLocalEvents) {
+    if (typeof navigator !== 'undefined' && !navigator.onLine && this.#useLocalEvents) {
       this.#log('info', 'Network is offline. Storing event locally.');
       this.#localEvents.push(message);
       return;
@@ -300,46 +301,45 @@ class WebSocketEventsHandler {
   }
 
   on(eventName, config) {
-    const handler = {
+    const existingHandler = this.#handlers.get(eventName);
+    this.#handlers.set(eventName, {
+      ...existingHandler,
       eventName,
       config,
-      registeredOn: Date.now(),
+      registeredOn: existingHandler?.registeredOn || Date.now(),
       off: false
-    }
-    const hIndex = this.#handlers.findIndex((h) => h.eventName === eventName);
-
-    if (hIndex === -1) {
-      this.#handlers.push(handler);
-      return;
-    }
-
-    if (hIndex !== -1) {
-      this.#handlers.splice(hIndex, 1, {
-        ...this.#handlers[hIndex],
-        ...handler
-      });
-    }
+    });
   }
 
   off(eventName) {
-      this.#handlers.forEach((handler, index) => {
-          if (handler.eventName === eventName) {
-              this.#handlers[index].off = true;
-          }
-      });
+      const handler = this.#handlers.get(eventName);
+      if (handler) {
+        this.#handlers.set(eventName, { ...handler, off: true });
+      }
   }
 
   destroy(reason) {
-      if (window) {
-        window.removeEventListener('online', this.#handleOnline);
-        window.removeEventListener('offline', this.#handleOffline);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', this.#boundHandleOnline);
+        window.removeEventListener('offline', this.#boundHandleOffline);
       }
-      this.#ws.removeEventListener('message', this.#onMessage);
-      this.#ws.removeEventListener('open', this.#onOpen);
-      this.#ws.removeEventListener('close', this.#onClose);
-      this.#ws.removeEventListener('error', this.#onError);
+      if (this.#nqm) {
+        if (typeof this.#nqm.off === 'function') {
+          this.#nqm.off('online', this.#boundHandleOnline);
+          this.#nqm.off('offline', this.#boundHandleOffline);
+        } else if (typeof this.#nqm.removeListener === 'function') {
+          this.#nqm.removeListener('online', this.#boundHandleOnline);
+          this.#nqm.removeListener('offline', this.#boundHandleOffline);
+        }
+      }
+      if (this.#ws) {
+        this.#ws.removeEventListener('message', this.#onMessage);
+        this.#ws.removeEventListener('open', this.#onOpen);
+        this.#ws.removeEventListener('close', this.#onClose);
+        this.#ws.removeEventListener('error', this.#onError);
+      }
       this.#stopHeartbeat();
-      this.#ws.close();
+      if (this.#ws && this.#ws.readyState < 2) this.#ws.close();
       if (this.#localEventsDispatchInterval) clearInterval(this.#localEventsDispatchInterval);
       if (this.#nqm) this.#nqm.stopMonitoring();
       this.#log('error', 'WebSocket destroyed.', reason)
