@@ -126,6 +126,46 @@ wsHandler.destroy('Reason for destruction');
 - **`send(eventName, payload)`**: Sends an event with an optional payload.
 - **`destroy(reason)`**: Destroys the WebSocket connection and cleans up resources.
 
+## Known Errors and Potential Bugs
+
+The following issues were detected in the current implementation and should be considered before production usage:
+
+1. **`navigator` access in non-browser environments (Node.js)**
+   - **Location**: `WebSocketEventsHandler.send()`
+   - **Issue**: `navigator` is referenced without a `typeof navigator !== 'undefined'` guard.
+   - **Impact**: Can throw `ReferenceError: navigator is not defined` in Node.js.
+   - **Workaround**: Guard navigator access with `typeof navigator !== 'undefined'`.
+
+2. **`window` access in non-browser environments (Node.js)**
+   - **Location**: `WebSocketEventsHandler.destroy()`
+   - **Issue**: `if (window)` is used instead of checking if `window` exists.
+   - **Impact**: Can throw `ReferenceError: window is not defined` in Node.js.
+   - **Workaround**: Use `if (typeof window !== 'undefined')`.
+
+3. **Listener cleanup mismatch (potential memory leak)**
+   - **Location**: `#setupNetworkListeners()` + `destroy()`
+   - **Issue**: Listeners are attached with `.bind(...)` but removed with unbound methods.
+   - **Impact**: Online/offline listeners may remain active after `destroy()`.
+   - **Workaround**: Store bound listener references and remove those exact references.
+
+4. **Unsafe JSON parse path in message handling**
+   - **Location**: `#onMessage()`
+   - **Issue**: `JSON.parse(event.data)` is executed without `try/catch`.
+   - **Impact**: Malformed payloads can break the message loop.
+   - **Workaround**: Wrap parse with `try/catch` and fallback safely.
+
+5. **Potential null/undefined WebSocket close call**
+   - **Location**: `#handleOffline()`
+   - **Issue**: `this.#ws.close()` is called without checking `this.#ws`.
+   - **Impact**: Can throw when offline event fires before socket initialization.
+   - **Workaround**: Guard with `if (this.#ws)`.
+
+6. **Handler lookup scales linearly**
+   - **Location**: `#handlers` + lookups via `.find()` / `.findIndex()`
+   - **Issue**: Event handler operations are O(n).
+   - **Impact**: Throughput can degrade with many registered handlers.
+   - **Workaround**: Replace array-based registry with a `Map` for O(1) average lookups.
+
 ## License
 
 This project is licensed under the MIT License.
