@@ -65,6 +65,36 @@ The `WebSocketEventsHandler` class is a comprehensive JavaScript handler for man
 
 ## Features
 
+## Cycle Feature
+
+The cycle feature allows you to repeat an event handler a certain number of times or until a specific condition is met.
+
+### Configuration Options
+
+*   `every`: The number of messages to collect before executing the callback.
+*   `rounds`: The number of times to repeat the cycle. If not specified, the cycle will repeat indefinitely.
+*   `once`: If true, the cycle will only run once, equivalent to rounds: 1.
+*   `exclusive`: If true, the original callback will not be executed, only the cycle callback.
+*   `callback`: The callback function to execute at the end of each cycle.
+
+### Usage Example
+
+```javascript
+ws.on('myEvent', {
+  cycle: {
+    every: 5,
+    rounds: 3,
+    callback: (payloads) => {
+      console.log('Cycle completed with payloads:', payloads);
+    }
+  }
+});
+```
+
+In this example, the `myEvent` handler will collect 5 payloads, then execute the callback function. This cycle will repeat 3 times.
+
+## Features
+
 - **Automatic Reconnection**: Attempts to reconnect with exponential backoff if the connection drops.
 - **Heartbeat Support**: Regularly pings the server to maintain connection, with configurable intervals and timeouts.
 - **Event Handling**: Allows registration of custom event handlers and triggers them on incoming messages.
