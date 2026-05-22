@@ -80,9 +80,57 @@ Install this module via npm:
 npm install ws-events-handler
 ```
 
-## Usage
+## Cycle Feature
 
-### Basic Initialization
+  65| The cycle feature allows you to repeat an event handler a certain number of times or until a specific condition is met.
+
+  66| ### Configuration Options
+
+  67| *   `every`: The number of messages to collect before executing the callback.
+  68| *   `rounds`: The number of times to repeat the cycle. If not specified, the cycle will repeat indefinitely.
+  69| *   `once`: If true, the cycle will only run once, equivalent to rounds: 1.
+  70| *   `exclusive`: If true, the original callback will not be executed, only the cycle callback.
+  71| *   `callback`: The callback function to execute at the end of each cycle.
+
+  72| ### Usage Example
+
+  73| ```javascript
+  74| ws.on('myEvent', {
+  75|   cycle: {
+  76|     every: 5,
+  77|     rounds: 3,
+  78|     callback: (payloads) => {
+  79|       console.log('Cycle completed with payloads:', payloads);
+  80|     }
+  81|   }
+  82| });
+  83| ```
+
+  84| In this example, the `myEvent` handler will collect 5 payloads, then execute the callback function. This cycle will repeat 3 times.
+  85| 
+  85| ## Usage
+   85| 
+   85| ### Basic Initialization
+   85| 
+   85| ```javascript
+   86| import WebSocketEventsHandler from './WebSocketEventsHandler';
+   87| 
+   88| const wsHandler = new WebSocketEventsHandler('ws://your-websocket-url', {
+   89|   heartbeat: { 
+   90|     interval: 15000, 
+   91|     message: 'ping', 
+   92|     expectedResponse: 'pong', 
+   93|     timeout: 10000 
+   94|   },
+   95|   connection: { 
+   96|     maxRetries: 5, 
+   97|     retryDelay: 1000 
+   98|   },
+   99|   debug: true
+  100| });
+  101| ```
+  102| 
+  103| ### Configuration Options
 
 ```javascript
 import WebSocketEventsHandler from './WebSocketEventsHandler';

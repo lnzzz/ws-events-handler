@@ -237,6 +237,14 @@ class WebSocketEventsHandler {
       
   }
 
+/**
+   * Processes the cycle configuration for an event handler.
+   * The cycle feature allows you to repeat an event handler a certain number of times or until a specific condition is met.
+   *
+   * @private
+   * @param {object} handler The event handler object.
+   * @param {any} payload The event payload.
+   */
   #processCycle(handler, payload) {
       const { cycle } = handler.config;
 
