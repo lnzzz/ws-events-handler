@@ -1,154 +1,66 @@
+# WS-Events (WSEVENTS)
 
-# WebSocketEventsHandler
+Event handler system for managing WebSocket-based event processing and communication
 
-The `WebSocketEventsHandler` class is a comprehensive JavaScript handler for managing WebSocket connections, including automatic reconnection, heartbeat management, event handling, and offline event storage. This class provides robust support for WebSocket applications, ensuring seamless communication even in unstable network environments.
+[![npm version](https://img.shields.io/npm/v/ws-events-handler.svg)](https://www.npmjs.com/package/ws-events-handler)
+[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
+
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Documentation](#documentation)
+- [License](#license)
 
 ## Features
 
-- **Automatic Reconnection**: Attempts to reconnect with exponential backoff if the connection drops.
-- **Heartbeat Support**: Regularly pings the server to maintain connection, with configurable intervals and timeouts.
-- **Event Handling**: Allows registration of custom event handlers and triggers them on incoming messages.
-- **Local Event Storage**: Caches events when offline and dispatches them once reconnected.
-- **Debug Mode**: Logs detailed information about the WebSocket connection and events for troubleshooting.
-- **Network Detection**: Listens for network status changes to handle online and offline events.
+- **Automatic Reconnection** — Exponential backoff reconnection strategy
+- **Heartbeat / Keep-Alive** — Configurable ping/pong with timeout detection
+- **Event-Driven Architecture** — Register listeners for custom event types
+- **Cycle / Batch Processing** — Group N messages and process them together
+- **Automatic ACK** — Built-in acknowledgment events (e.g., `eventName-ack`)
+- **Offline Resilience** — Queue events locally and dispatch on reconnect
+- **Cross-Platform** — Browser `navigator.onLine` + Node.js NetworkQualityMonitor
+- **Debug Mode** — Verbose logging for development
 
 ## Installation
-
-Install this module via npm:
 
 ```bash
 npm install ws-events-handler
 ```
 
-## Usage
-
-### Basic Initialization
+## Quick Start
 
 ```javascript
-import WebSocketEventsHandler from './WebSocketEventsHandler';
+import WebSocketEventsHandler from 'ws-events-handler';
 
-const wsHandler = new WebSocketEventsHandler('ws://your-websocket-url', {
-  heartbeat: { 
-    interval: 15000, 
-    message: 'ping', 
-    expectedResponse: 'pong', 
-    timeout: 10000 
-  },
-  connection: { 
-    maxRetries: 5, 
-    retryDelay: 1000 
-  },
+const ws = new WebSocketEventsHandler('ws://localhost:8080', {
+  heartbeat: { interval: 15000, message: 'ping', expectedResponse: 'pong', timeout: 10000 },
+  connection: { maxRetries: 5, retryDelay: 1000 },
   debug: true
 });
+
+ws.on('message', (data) => console.log('Received:', data));
+ws.send('greeting', { text: 'Hello!' });
 ```
 
-### Configuration Options
+## Documentation
 
-- **heartbeat** (object):
-  - `interval`: Interval between heartbeats in milliseconds.
-  - `message`: Message sent as heartbeat.
-  - `expectedResponse`: Expected response from server.
-  - `timeout`: Time to wait for a response before reconnecting.
-  
-- **connection** (object):
-  - `maxRetries`: Maximum number of reconnection attempts.
-  - `retryDelay`: Delay between reconnection attempts.
-  - `fallback.localEvents`: Enable storing events locally when offline.
-
-- **debug** (boolean): Enable verbose logging.
-
-### Event Handling
-
-Register an event handler for a specific event:
-
-```javascript
-wsHandler.on('eventName', (data) => {
-  console.log('Event received:', data);
-});
-```
-
-#### Cyclic event handling
-
-Register an event handler for a specific event in cycles.
-
-```javascript
-  wsEvents.on('eventName', { 
-    cycle: { 
-      every: 3,
-      exclusive: true,
-      once: true,
-      callback: (data) => {
-        console.log(data);
-      }
-    },
-    callback: (data) => {
-      console.log("this won't fire as cycle is configured to be exclusive.")
-    }
-  })
-```
-
-This configuration will fire callback once 3 messages for 'eventName' have arrived.
-
-#### Configuration options for cycles
-- `every`: Cycle will be executed every N messages.
-- `exclusive`: Cycle will only execute it's internal callback and not the root callback defined in the handler configuration. If false, root callback will be called every time a message arrives to 'eventName'.
-- `rounds`: Cycle will run N times and then it will self-destruct.
-- `once`: Cycle will run only once. (similar to setting rounds = 1)
-
-
-
-Unregister an event:
-
-```javascript
-wsHandler.off('eventName');
-```
-
-### Sending Events
-
-To send an event with optional payload:
-
-```javascript
-wsHandler.send('eventName', { key: 'value' });
-```
-
-### Destroying the WebSocket Connection
-
-To clean up resources and close the WebSocket connection:
-
-```javascript
-wsHandler.destroy('Reason for destruction');
-```
-
-## Methods
-
-- **`on(eventName, config)`**: Registers an event handler.
-- **`off(eventName)`**: Unregisters an event handler.
-- **`send(eventName, payload)`**: Sends an event with an optional payload.
-- **`destroy(reason)`**: Destroys the WebSocket connection and cleans up resources.
-
-## Resolved Errors and Fixes
-
-The following issues were fixed in the current implementation:
-
-1. **Node.js safety for `navigator` usage**
-   - `send()` now checks `typeof navigator !== 'undefined'` before reading `navigator.onLine`.
-
-2. **Node.js safety for `window` usage**
-   - `destroy()` now checks `typeof window !== 'undefined'` before removing browser listeners.
-
-3. **Correct listener teardown**
-   - Online/offline listeners are now stored as bound references and removed using the same references.
-   - Node monitor (`NetworkQualityMonitor`) listeners are explicitly detached on `destroy()`.
-
-4. **Safe message parsing**
-   - `#onMessage()` now uses `try/catch` around `JSON.parse(...)` to avoid runtime crashes on malformed data.
-
-5. **Safe WebSocket close on offline**
-   - `#handleOffline()` and `destroy()` now guard WebSocket closing with null/state checks.
-
-6. **Improved event handler complexity**
-   - Handler storage migrated from array lookups to `Map`, improving average lookup/update complexity from **O(n)** to **O(1)**.
+| Document | Description |
+|----------|-------------|
+| [Getting Started](docs/01-getting-started.md) | Installation, setup, first steps |
+| [Core Concepts](docs/02-core-concepts.md) | Architecture, patterns, design decisions |
+| [Event Handling](docs/03-event-handling.md) | Event lifecycle, message format, sending/receiving |
+| [Handlers](docs/04-handlers.md) | Register, configure, unregister handlers |
+| [Connections](docs/06-connections.md) | Lifecycle, reconnection, heartbeat |
+| [Error Handling](docs/07-error-handling.md) | Error types, recovery, logging |
+| [API Reference](docs/08-api-reference.md) | Full API reference |
+| [Examples](docs/09-examples.md) | Real-world usage examples |
+| [Advanced Topics](docs/11-advanced-topics.md) | Cycle, ACK, local events, monitoring |
+| [Troubleshooting](docs/13-troubleshooting.md) | Common issues and solutions |
+| [Contributing](docs/CONTRIBUTING.md) | How to contribute |
 
 ## License
 
-This project is licensed under the MIT License.
+ISC License
